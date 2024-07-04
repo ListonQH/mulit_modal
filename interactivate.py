@@ -2,9 +2,10 @@ from tkinter import *
 from tkinter import filedialog
 import datetime
 import os
-from PIL import Image, ImageTk
-
+from PIL import Image, ImageTk, ImageGrab
+import win32gui
 from tkinter import ttk
+import time
 
 def print_info(info:str):
     now = datetime.datetime.now()
@@ -18,6 +19,12 @@ infos_in_canvas_list = []
 mouse_click_x, mouse_click_y = 0, 0
 # ControlNet image
 controlnet_image = None
+# 保留对象size属性的接口
+object_size_map = dict({
+    'Bird':'small',
+    'Sun':'medium-sized',
+    'Cloud':'large'
+})
 
 root = Tk()
 
@@ -45,6 +52,7 @@ def menu_add_object(o_name:str):
         'position_x':mouse_click_x,
         'position_y':mouse_click_y,
         'text':o_name,
+        'size':object_size_map[o_name],
         'item_id':[item_id_1, item_id_2]
     })
     infos_in_canvas_list.append(info)
@@ -58,7 +66,18 @@ add_object_menu.add_command(label='Sun', command=lambda: menu_add_object('Sun'))
 add_object_menu.add_command(label='Cloud', command=lambda: menu_add_object('Cloud'))
 
 right_click_menu.add_command(label='Exit', command=root.destroy)
-right_click_menu.add_command(label='Generate')
+
+def menu_generate():
+    print_info('Generate!')
+    if len(infos_in_canvas_list) == 0:
+        print_info(' Empty infos_in_canvas_list. Nothing to generate!')
+        return
+    infos = "Send generate infos:"
+    for info in infos_in_canvas_list:
+        infos =  infos + '\n' + str(info)
+    print_info(info=infos)
+    print_info('Generate infos send success!')
+right_click_menu.add_command(label='Generate', command=menu_generate)
 
 def menu_clean():
     infos_in_canvas_list.clear()
@@ -89,7 +108,7 @@ def menu_load_gif():
     print_info(f'Load gif from: {filename}')
         
     global controlnet_image
-    image = Image.open(filename)
+    image = Image.open(filename).resize((512, 512))
     controlnet_image = ImageTk.PhotoImage(image)
     
     item_id = canvas.create_image(0, 0, anchor=NW, image=controlnet_image)
@@ -107,7 +126,6 @@ def menu_load_gif():
     
     root.update()
     print_info('Refresh: root.update()!')    
-    
     
 right_click_menu.add_command(label='Load gif',command=menu_load_gif)
 
@@ -156,8 +174,21 @@ def menu_undo():
        
 right_click_menu.add_command(label='Undo', command=menu_undo)
 
+def menu_save():
+    HWND = win32gui.GetFocus()  # 获取当前窗口句柄
+    rect1 = win32gui.GetWindowRect(HWND)  # 获取当前窗口坐标
+    # magic number: 2. From your desktop setting "Scale".
+    rect1 = [ p * 2 for p in rect1]
+    time.sleep(0.5)
+    im=ImageGrab.grab(rect1)
+    im.save("canvas.png",'png')
+
+right_click_menu.add_command(label='Save', command=menu_save)
+
+
 def listen_mouse_right_click(event):
     # 相对于屏幕的位置
+    # print(root.winfo_rootx(), root.winfo_rooty())
     # print(event.x_root, event.y_root)
     # 鼠标相对root frame 位置
     # print(event.x, event.y)    
