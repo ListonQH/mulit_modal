@@ -6,6 +6,7 @@ from PIL import Image, ImageTk, ImageGrab
 import win32gui
 from tkinter import ttk
 import time
+from mm_util import *
 
 def print_info(info:str):
     now = datetime.datetime.now()
@@ -26,6 +27,21 @@ object_size_map = dict({
     'Cloud':'large'
 })
 
+# 九大区域 的 坐标:(up_left_x, up_left_y, height, width)
+nine_big_area:list = [
+    ( 512 // 3 * 0, 512 // 3 * 0, 512 // 3, 512 // 3, "on the top-left"),
+    ( 512 // 3 * 1, 512 // 3 * 0, 512 // 3, 512 // 3, "on the top"),
+    ( 512 // 3 * 2, 512 // 3 * 0, 512 // 3, 512 // 3, "on the top-right"),
+    
+    ( 512 // 3 * 0, 512 // 3 * 1, 512 // 3, 512 // 3, "on the left"),
+    ( 512 // 3 * 1, 512 // 3 * 1, 512 // 3, 512 // 3, "in the center"),
+    ( 512 // 3 * 2, 512 // 3 * 1, 512 // 3, 512 // 3, "on the right"),
+    
+    ( 512 // 3 * 0, 512 // 3 * 2, 512 // 3, 512 // 3, "on the bottom-left"),
+    ( 512 // 3 * 1, 512 // 3 * 2, 512 // 3, 512 // 3, "on the bottom"),
+    ( 512 // 3 * 2, 512 // 3 * 2, 512 // 3, 512 // 3, "on the bottom-right")
+]
+
 root = Tk()
 
 canvas = Canvas(root, width=512, height=512, background='white')
@@ -39,18 +55,32 @@ add_object_menu = Menu(right_click_menu, tearoff=False)
 def menu_add_object(o_name:str):
     print_info(f'menu_add_object( {o_name} )')
     
+    # 左上，右下的坐标
     x0, x1 = mouse_click_x - 50,  mouse_click_x + 50
-    y0, y1 = mouse_click_y - 25,  mouse_click_y + 25
+    y0, y1 = mouse_click_y - 25,  mouse_click_y + 25    
+    if x0 < 0:
+        x0 = 0
+        x1 = 100
+    if x1 > 512:
+        x0 = 412
+        x1 = 512
+    if y0 < 0:
+        y0 = 0
+        y1 = 50
+    if y1 > 512:
+        y1 = 512
+        y0 = 412
     
     # canvas.create_rectangle(x0, y0, x1, y1, dash = (4, 4))
     item_id_1 = canvas.create_oval(x0, y0, x1, y1, fill = "pink")
-    item_id_2 = canvas.create_text(mouse_click_x, mouse_click_y, text = o_name)
+    item_id_2 = canvas.create_text((x0 + x1) // 2, (y0 + y1) // 2, text = o_name)
     
     print_info(f'Before len(infos_in_canvas_list):{len(infos_in_canvas_list)}')
     info = dict({
         'type':'object',
-        'position_x':mouse_click_x,
-        'position_y':mouse_click_y,
+        'mouse_click_xy':[mouse_click_x, mouse_click_y],
+        
+        'top_left_and_bottom_right':[x0, y0, x1, y1],
         'text':o_name,
         'size':object_size_map[o_name],
         'item_id':[item_id_1, item_id_2]
@@ -72,10 +102,36 @@ def menu_generate():
     if len(infos_in_canvas_list) == 0:
         print_info(' Empty infos_in_canvas_list. Nothing to generate!')
         return
-    infos = "Send generate infos:"
+    infos = "Generate infos:"
     for info in infos_in_canvas_list:
         infos =  infos + '\n' + str(info)
     print_info(info=infos)
+    
+    prompts = ""
+    # 生成位置信息
+    for info in infos_in_canvas_list:
+        o_name = info['text']
+        o_type = info['type']
+        for x0, y0, h, w, pos in nine_big_area:
+            if o_type == 'object':
+                iou = calculate_IoU(info['top_left_and_bottom_right'], (x0, y0, x0 + w, y0 + h))
+                if iou >= (100 * 50) // 2:                    
+                    sub_prompt = f'A {object_size_map[o_name]} {o_name} {pos}. '
+                    prompts = prompts + sub_prompt                              
+                    break
+            elif o_type == 'text':
+                if point_in_area(info['mouse_click_xy'], (x0, y0, x0 + w, y0 + h)):
+                    sub_prompt = f'A line word "{o_name}" {pos}. '
+                    prompts = prompts + sub_prompt                              
+                    break
+        print_info(f'Finish do: {info}')
+        # end for: find area
+    # end for: do all object on canvas
+        
+              
+    print_info(f'Prompts:\n{prompts}')  
+    
+    
     print_info('Generate infos send success!')
 right_click_menu.add_command(label='Generate', command=menu_generate)
 
@@ -137,8 +193,7 @@ def menu_add_text():
     print_info(f'Before len(infos_in_canvas_list):{len(infos_in_canvas_list)}')
     info = dict({
         'type':'text',
-        'position_x':mouse_click_x,
-        'position_y':mouse_click_y,
+        'mouse_click_xy':[mouse_click_x, mouse_click_y],
         'text':'Hello World!',
         'item_id':[item_id_1]
     })
